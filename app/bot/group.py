@@ -74,9 +74,16 @@ class GroupMixin:
                 logger.info("Authorized group %s because owner added the bot", chat.id)
                 return
 
+            added_by_name = getattr(added_by, "full_name", None) or "未知使用者"
+            added_by_username = getattr(added_by, "username", None)
+            added_by_identity = f"{added_by_name}"
+            if added_by_username:
+                added_by_identity += f" (@{added_by_username})"
+            added_by_identity += f"（user_id: {getattr(added_by, 'id', '未知')}）"
+
             await self._notify_and_leave_unauthorized_group(
                 chat,
-                "機器人由非 owner 帳號加入",
+                f"機器人由非 owner 帳號加入\n加入者：{added_by_identity}",
             )
             return
 
