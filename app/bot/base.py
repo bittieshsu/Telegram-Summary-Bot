@@ -12,6 +12,7 @@ from app.bot.command_menu import (
 )
 from app.config import Settings
 from app.db import Database
+from app.link_previews import LinkPreviewService
 from app.llm import OpenAIQueryParser, OpenAISummarizer
 
 
@@ -39,6 +40,7 @@ class BotBase:
             api_key=settings.openai_api_key,
             max_output_tokens=settings.openai_max_output_tokens,
         )
+        self.link_previews = LinkPreviewService()
 
     async def post_init(self, application: Application) -> None:
         await self.db.connect()
@@ -61,6 +63,7 @@ class BotBase:
         logger.info("Bot initialized")
 
     async def post_shutdown(self, _: Application) -> None:
+        await self.link_previews.close()
         await self.db.close()
 
     @property

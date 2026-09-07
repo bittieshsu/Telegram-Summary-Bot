@@ -30,6 +30,7 @@ class GroupMixin:
         text = (message.text or message.caption or "").strip()
         if not text:
             return
+        text = await self.link_previews.enrich(text)
 
         display_name = user.full_name
         if user.username:
