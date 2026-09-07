@@ -21,6 +21,8 @@
 
 ## 快速啟動
 
+本機執行補回工具時需要 Python 3.14。容器映像也使用 Python 3.14。
+
 ### 1. 準備 `.env`
 
 ```bash
@@ -172,10 +174,10 @@ owner 將 Bot 加入的新群組會自動授權。舊版已存在的群組可由
 Bot API 無法讀取加入前的群組歷史；可使用自己的 Telegram 帳號，以一次性的 MTProto session 補回資料。先在 [my.telegram.org](https://my.telegram.org) 建立 API ID/hash，並確認該帳號已在目標群組中。目標群組必須已由 Bot 授權，否則工具會拒絕寫入。
 
 ```bash
-pip install -r requirements.txt
+python3.14 -m pip install -r requirements.txt
 export TELEGRAM_API_ID=123456
 export TELEGRAM_API_HASH=your_api_hash
-python -m app.backfill \
+python3.14 -m app.backfill \
   --chat @group_username \
   --from 2025-01-01T00:00:00Z \
   --to 2025-02-01T00:00:00Z \
