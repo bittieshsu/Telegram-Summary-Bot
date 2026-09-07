@@ -40,13 +40,20 @@ def build_message(
     )
 
 
-def build_update(*, message, user_id: int, user_name: str, username: str | None = None):
+def build_update(
+    *,
+    message,
+    user_id: int,
+    user_name: str,
+    username: str | None = None,
+    is_bot: bool = False,
+):
     return SimpleNamespace(
         effective_message=message,
         effective_chat=SimpleNamespace(id=GROUP_ID, type=ChatType.SUPERGROUP),
         effective_user=SimpleNamespace(
             id=user_id,
-            is_bot=False,
+            is_bot=is_bot,
             full_name=user_name,
             username=username,
         ),
@@ -98,6 +105,43 @@ class CaptureMessageTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual([row["reply_to_message_id"] for row in rows], [None, 1])
         self.assertEqual([row["user_name"] for row in rows], ["阿明", "小美"])
+
+    async def test_stores_bot_message_that_a_member_replies_to(self) -> None:
+        bot_message = build_message(
+            message_id=1,
+            text="部署完成，請回報問題。",
+            age=timedelta(minutes=5),
+        )
+        await self.bot.capture_message(
+            build_update(
+                message=bot_message,
+                user_id=99,
+                user_name="部署機器人",
+                username="deploy_bot",
+                is_bot=True,
+            ),
+            None,
+        )
+
+        reply = build_message(
+            message_id=2,
+            text="測試環境正常。",
+            reply_to=SimpleNamespace(message_id=1, chat=SimpleNamespace(id=GROUP_ID)),
+        )
+        await self.bot.capture_message(
+            build_update(message=reply, user_id=11, user_name="阿明"),
+            None,
+        )
+
+        rows = await self._stored_rows()
+
+        self.assertEqual(
+            [(row["user_name"], row["text"], row["reply_to_message_id"]) for row in rows],
+            [
+                ("部署機器人 (@deploy_bot)", "部署完成，請回報問題。", None),
+                ("阿明", "測試環境正常。", 1),
+            ],
+        )
 
     async def test_ignores_reply_target_from_another_chat(self) -> None:
         quoted = build_message(

@@ -20,7 +20,7 @@ class GroupMixin:
         if not message or not chat or not user:
             return
 
-        if chat.type not in {ChatType.GROUP, ChatType.SUPERGROUP} or user.is_bot:
+        if chat.type not in {ChatType.GROUP, ChatType.SUPERGROUP}:
             return
         if not await self._assert_authorized_group(update):
             return
