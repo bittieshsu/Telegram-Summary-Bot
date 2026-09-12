@@ -5,6 +5,10 @@ from telegram.constants import ChatType
 from telegram.ext import ContextTypes
 
 from app.bot.base import ACTIVE_MEMBER_STATUSES, logger
+from app.bot.command_menu import (
+    delete_group_owner_command_menu,
+    sync_group_owner_command_menu,
+)
 from app.time_utils import to_iso
 
 
@@ -16,7 +20,7 @@ class GroupMixin:
         if not message or not chat or not user:
             return
 
-        if chat.type not in {ChatType.GROUP, ChatType.SUPERGROUP} or user.is_bot:
+        if chat.type not in {ChatType.GROUP, ChatType.SUPERGROUP}:
             return
         if not await self._assert_authorized_group(update):
             return
@@ -26,6 +30,7 @@ class GroupMixin:
         text = (message.text or message.caption or "").strip()
         if not text:
             return
+        text = await self.link_previews.enrich(text)
 
         display_name = user.full_name
         if user.username:
@@ -62,17 +67,34 @@ class GroupMixin:
             added_by = membership.from_user
             if added_by and added_by.id == self.settings.owner_telegram_user_id:
                 await self.db.authorize_chat(chat.id)
+                await sync_group_owner_command_menu(
+                    self.application.bot,
+                    chat.id,
+                    self.settings.owner_telegram_user_id,
+                )
                 logger.info("Authorized group %s because owner added the bot", chat.id)
                 return
 
+            added_by_name = getattr(added_by, "full_name", None) or "未知使用者"
+            added_by_username = getattr(added_by, "username", None)
+            added_by_identity = f"{added_by_name}"
+            if added_by_username:
+                added_by_identity += f" (@{added_by_username})"
+            added_by_identity += f"（user_id: {getattr(added_by, 'id', '未知')}）"
+
             await self._notify_and_leave_unauthorized_group(
                 chat,
-                "機器人由非 owner 帳號加入",
+                f"機器人由非 owner 帳號加入\n加入者：{added_by_identity}",
             )
             return
 
         if was_active and not is_active:
             await self.db.revoke_chat_authorization(chat.id)
+            await delete_group_owner_command_menu(
+                self.application.bot,
+                chat.id,
+                self.settings.owner_telegram_user_id,
+            )
             logger.info("Revoked authorization for group %s after bot removal", chat.id)
 
     async def handle_owner_chat_member(
@@ -100,6 +122,11 @@ class GroupMixin:
             return
 
         await self.db.revoke_chat_authorization(chat.id)
+        await delete_group_owner_command_menu(
+            self.application.bot,
+            chat.id,
+            self.settings.owner_telegram_user_id,
+        )
         await self._notify_and_leave_unauthorized_group(
             chat,
             "owner 已離開群組",

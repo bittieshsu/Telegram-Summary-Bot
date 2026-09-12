@@ -6,8 +6,13 @@ from telegram import LinkPreviewOptions, Update
 from telegram.constants import ChatType
 from telegram.ext import Application, ContextTypes
 
+from app.bot.command_menu import (
+    sync_group_owner_command_menu,
+    sync_private_command_menus,
+)
 from app.config import Settings
 from app.db import Database
+from app.link_previews import LinkPreviewService
 from app.llm import OpenAIQueryParser, OpenAISummarizer
 
 
@@ -19,6 +24,7 @@ ACTIVE_MEMBER_STATUSES = {"member", "administrator", "owner", "creator"}
 class BotBase:
     def __init__(self, settings: Settings):
         self.settings = settings
+        self.user_summary_requests: dict[int, object] = {}
         self.db = Database(
             path=settings.sqlite_path,
             default_timezone=settings.default_timezone,
@@ -34,10 +40,21 @@ class BotBase:
             api_key=settings.openai_api_key,
             max_output_tokens=settings.openai_max_output_tokens,
         )
+        self.link_previews = LinkPreviewService()
 
     async def post_init(self, application: Application) -> None:
         await self.db.connect()
-        application.job_queue.run_repeating(self.scheduler_tick, interval=30, first=10)
+        await sync_private_command_menus(
+            application.bot,
+            self.settings.owner_telegram_user_id,
+        )
+        for chat_id in await self.db.get_authorized_chat_ids():
+            await sync_group_owner_command_menu(
+                application.bot,
+                chat_id,
+                self.settings.owner_telegram_user_id,
+            )
+        application.job_queue.run_repeating(self.scheduler_tick, interval=120, first=10)
         application.job_queue.run_repeating(
             self.cleanup_tick,
             interval=24 * 3600,
@@ -46,6 +63,7 @@ class BotBase:
         logger.info("Bot initialized")
 
     async def post_shutdown(self, _: Application) -> None:
+        await self.link_previews.close()
         await self.db.close()
 
     @property

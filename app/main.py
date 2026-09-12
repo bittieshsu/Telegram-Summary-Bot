@@ -8,6 +8,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     ChatMemberHandler,
     CommandHandler,
+    ConversationHandler,
     MessageHandler,
     filters,
 )
@@ -57,16 +58,39 @@ def build_application(settings: Settings) -> Application:
     application.add_handler(CommandHandler("help", bot.start))
     application.add_handler(CommandHandler("subscribe", bot.subscribe))
     application.add_handler(CommandHandler("unsubscribe", bot.unsubscribe))
+    application.add_handler(CommandHandler("authorize_group", bot.authorize_group))
     application.add_handler(CommandHandler("status", bot.status))
     application.add_handler(CommandHandler("summary", bot.manual_summary))
+    application.add_handler(CommandHandler("user_summary_history", bot.user_summary_history))
     application.add_handler(CommandHandler("preview", bot.preview_summary))
-    application.add_handler(CommandHandler("set_schedule", bot.set_schedule))
-    application.add_handler(CommandHandler("set_timezone", bot.set_timezone))
-    application.add_handler(CommandHandler("set_model", bot.set_model))
-    application.add_handler(CommandHandler("set_reasoning", bot.set_reasoning))
-    application.add_handler(CommandHandler("set_style", bot.set_style))
-    application.add_handler(CommandHandler("set_auto", bot.set_auto))
-    application.add_handler(CallbackQueryHandler(bot.handle_subscription_callback))
+    setting_conversation = ConversationHandler(
+        entry_points=[
+            CommandHandler("set_schedule", bot.set_schedule),
+            CommandHandler("set_timezone", bot.set_timezone),
+            CommandHandler("set_model", bot.set_model),
+            CommandHandler("set_reasoning", bot.set_reasoning),
+            CommandHandler("set_style", bot.set_style),
+            CommandHandler("set_auto", bot.set_auto),
+        ],
+        states={
+            bot.SETTING_VALUE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, bot.receive_setting_value),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", bot.cancel_setting)],
+        name="group-setting",
+        per_chat=True,
+        per_user=True,
+        allow_reentry=True,
+    )
+    application.add_handler(setting_conversation)
+    application.add_handler(CommandHandler("cancel", bot.cancel_without_setting))
+    application.add_handler(
+        CallbackQueryHandler(bot.handle_subscription_callback, pattern=r"^(subscribe|unsubscribe):")
+    )
+    application.add_handler(
+        CallbackQueryHandler(bot.handle_user_summary_callback, pattern=r"^user_summary:")
+    )
     application.add_handler(
         MessageHandler(filters.ALL & ~filters.COMMAND, bot.capture_message),
     )

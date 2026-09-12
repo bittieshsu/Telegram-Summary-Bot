@@ -20,6 +20,7 @@ class FakeTelegramBot:
     def __init__(self) -> None:
         self.sent: list[SimpleNamespace] = []
         self.left_chats: list[int] = []
+        self.command_menus: list[tuple[int, int, list[str]]] = []
 
     async def send_message(self, *, chat_id, text, parse_mode=None) -> None:
         self.sent.append(SimpleNamespace(chat_id=chat_id, text=text, parse_mode=parse_mode))
@@ -27,8 +28,38 @@ class FakeTelegramBot:
     async def leave_chat(self, chat_id) -> None:
         self.left_chats.append(chat_id)
 
+    async def set_my_commands(self, commands, *, scope) -> bool:
+        self.command_menus.append(
+            (scope.chat_id, scope.user_id, [command.command for command in commands])
+        )
+        return True
 
-def build_membership_update(*, actor_id: int, old_status: str, new_status: str):
+
+def build_command_update(*, user_id: int, chat_type: ChatType) -> tuple[SimpleNamespace, SimpleNamespace]:
+    message = SimpleNamespace(replies=[])
+
+    async def reply_text(text: str) -> None:
+        message.replies.append(text)
+
+    message.reply_text = reply_text
+    return (
+        SimpleNamespace(
+            effective_user=SimpleNamespace(id=user_id),
+            effective_message=message,
+            effective_chat=SimpleNamespace(id=GROUP_ID, type=chat_type),
+        ),
+        message,
+    )
+
+
+def build_membership_update(
+    *,
+    actor_id: int,
+    old_status: str,
+    new_status: str,
+    actor_name: str = "加入者",
+    actor_username: str | None = None,
+):
     return SimpleNamespace(
         my_chat_member=SimpleNamespace(
             chat=SimpleNamespace(
@@ -36,7 +67,11 @@ def build_membership_update(*, actor_id: int, old_status: str, new_status: str):
                 type=ChatType.SUPERGROUP,
                 title="測試群組",
             ),
-            from_user=SimpleNamespace(id=actor_id),
+            from_user=SimpleNamespace(
+                id=actor_id,
+                full_name=actor_name,
+                username=actor_username,
+            ),
             old_chat_member=SimpleNamespace(status=old_status),
             new_chat_member=SimpleNamespace(status=new_status),
         )
@@ -106,6 +141,8 @@ class GroupAuthorizationTests(unittest.IsolatedAsyncioTestCase):
                 actor_id=OWNER_ID + 1,
                 old_status="left",
                 new_status="member",
+                actor_name="王小明",
+                actor_username="wang",
             ),
             None,
         )
@@ -113,7 +150,28 @@ class GroupAuthorizationTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(await self.bot.db.is_chat_authorized(GROUP_ID))
         self.assertEqual(self.telegram_bot.left_chats, [GROUP_ID])
         self.assertEqual([message.chat_id for message in self.telegram_bot.sent], [OWNER_ID])
-        self.assertIn("非 owner", self.telegram_bot.sent[0].text)
+        self.assertEqual(
+            self.telegram_bot.sent[0].text,
+            "機器人由非 owner 帳號加入\n"
+            "加入者：王小明 (@wang)（user_id: 778）：測試群組"
+            f"（chat_id: {GROUP_ID}）。機器人已退出，如需使用請由 owner 親自重新加入。",
+        )
+
+    async def test_non_owner_adding_bot_without_username_notifies_owner(self) -> None:
+        await self.bot.handle_my_chat_member(
+            build_membership_update(
+                actor_id=OWNER_ID + 1,
+                old_status="left",
+                new_status="member",
+                actor_name="王小明",
+            ),
+            None,
+        )
+
+        self.assertIn(
+            "加入者：王小明（user_id: 778）：測試群組",
+            self.telegram_bot.sent[0].text,
+        )
 
     async def test_removing_bot_revokes_existing_authorization(self) -> None:
         await self.bot.db.authorize_chat(GROUP_ID)
@@ -158,6 +216,43 @@ class GroupAuthorizationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(await self.bot.db.is_chat_authorized(GROUP_ID))
         self.assertEqual(self.telegram_bot.left_chats, [])
+
+    async def test_owner_can_authorize_existing_group(self) -> None:
+        update, message = build_command_update(
+            user_id=OWNER_ID,
+            chat_type=ChatType.SUPERGROUP,
+        )
+
+        await self.bot.authorize_group(update, None)
+
+        self.assertTrue(await self.bot.db.is_chat_authorized(GROUP_ID))
+        self.assertEqual(message.replies, ["已授權此群組，並同步擁有者指令選單。"])
+        self.assertEqual(self.telegram_bot.command_menus[0][0:2], (GROUP_ID, OWNER_ID))
+        self.assertIn("authorize_group", self.telegram_bot.command_menus[0][2])
+
+    async def test_non_owner_cannot_authorize_group(self) -> None:
+        update, message = build_command_update(
+            user_id=OWNER_ID + 1,
+            chat_type=ChatType.SUPERGROUP,
+        )
+
+        await self.bot.authorize_group(update, None)
+
+        self.assertFalse(await self.bot.db.is_chat_authorized(GROUP_ID))
+        self.assertEqual(message.replies, ["你沒有權限執行這個指令。"])
+        self.assertEqual(self.telegram_bot.command_menus, [])
+
+    async def test_authorize_group_rejects_private_chat(self) -> None:
+        update, message = build_command_update(
+            user_id=OWNER_ID,
+            chat_type=ChatType.PRIVATE,
+        )
+
+        await self.bot.authorize_group(update, None)
+
+        self.assertFalse(await self.bot.db.is_chat_authorized(GROUP_ID))
+        self.assertEqual(message.replies, ["此指令必須在群組中執行才能授權。"])
+        self.assertEqual(self.telegram_bot.command_menus, [])
 
     async def test_unauthorized_group_activity_leaves_without_storing_message(self) -> None:
         message = SimpleNamespace(
