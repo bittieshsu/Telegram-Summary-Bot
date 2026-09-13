@@ -65,6 +65,7 @@ jobs:
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
       DEPLOY_HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       IMAGE_REPOSITORY: ${{ needs.build.outputs.image_repository }}
       IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
     steps:
@@ -178,5 +179,5 @@ jobs:
           printf -v image_repository_quoted '%q' "$IMAGE_REPOSITORY"
           printf -v image_tag_quoted '%q' "$IMAGE_TAG"
           printf -v deploy_path_quoted '%q' "$DEPLOY_PATH"
-          printf '%s' "$GITHUB_TOKEN" | ssh "${ssh_options[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
+          printf '%s' "$GHCR_TOKEN" | ssh "${ssh_options[@]}" "$DEPLOY_USER@$DEPLOY_HOST" \
             "IMAGE_REPOSITORY=$image_repository_quoted IMAGE_TAG=$image_tag_quoted GHCR_USERNAME=${GITHUB_ACTOR@Q} $deploy_path_quoted/deploy-docker.sh"
