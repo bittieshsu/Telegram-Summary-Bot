@@ -51,25 +51,28 @@ docker compose logs -f telegram-summary-bot
 
 ## GitHub Actions 部署
 
-推送至 `master` 時，GitHub Actions 會先建置 Docker image，再推送 `ghcr.io/<owner>/<repository>` 的 commit SHA 與 `latest` tag，最後透過 SSH 在目標主機拉取該 commit SHA image 並以 Docker Compose 重啟。目標主機不會建置 image。
+推送至 `master` 時，GitHub Actions 會建置並推送 `ghcr.io/<owner>/<repository>:sha-<commit-sha>`，再透過 SSH 讓目標主機拉取該不可變 image 並以 Docker Compose 重啟。目標主機不會建置 image，也不需要 clone repository。
 
 目標主機須具備：
 
 - Docker 與 Docker Compose。
-- 此 repository 已 clone 至部署目錄，且可在該目錄對 `master` 執行 `git pull --ff-only`。
-- 已建立 `.env`，並保留 `data` 目錄以持久化資料庫。
+- 已建立部署目錄、`.env` 與 `data` 目錄；`.env` 與 `data` 會保留在主機上。
 
-在 GitHub repository 的 Actions secrets 設定下列值：
+在 GitHub repository 建立 `production` Environment，並設定下列值：
+
+| Variable | 用途 |
+| --- | --- |
+| `DEPLOY_HOST` | 目標主機的主機名稱或 IP。 |
+| `DEPLOY_PORT` | SSH 連接埠，例如 `22`。 |
+| `DEPLOY_USER` | 用於 SSH 部署的使用者名稱。 |
+| `DEPLOY_PATH` | 目標主機上的部署絕對路徑。 |
 
 | Secret | 用途 |
 | --- | --- |
-| `DEPLOY_HOST` | 目標主機的主機名稱或 IP。 |
-| `DEPLOY_USER` | 用於 SSH 部署的使用者名稱。 |
-| `DEPLOY_PATH` | 目標主機上的 repository 絕對路徑。 |
 | `DEPLOY_SSH_KEY` | 部署使用者的 SSH 私鑰。 |
-| `DEPLOY_KNOWN_HOSTS` | 目標主機的已驗證 SSH host key（`known_hosts` 格式）。 |
-| `DEPLOY_GHCR_USERNAME` | 可讀取此 GHCR image 的 GitHub 使用者或機器人帳號。 |
-| `DEPLOY_GHCR_TOKEN` | 對應帳號的 GHCR token，必須具有 `packages:read` 權限。 |
+| `DEPLOY_HOST_KEY` | 目標主機已驗證的 SSH host key，例如 `ssh-ed25519 AAAA...`。 |
+
+可選擇設定 Required reviewers，讓部署需核准後才執行；未設定 protection rule 時，推送仍會自動部署。GHCR 驗證使用 GitHub Actions 的短效 `GITHUB_TOKEN`，不需要長期 GHCR token。
 
 ## Telegram 與 BotFather 權限
 
