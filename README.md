@@ -24,7 +24,7 @@ Bot 保存所有帳號的文字訊息與 caption，包括其他 Bot 的內容，
 - owner 的 Telegram user ID
 - Python 3.14（僅本機執行舊訊息補回工具時需要）
 
-容器使用官方 `python:3.14-alpine` 映像；執行時入口為 `python -m app.main`。
+容器使用官方 `python:3.14-slim` 映像；執行時入口為 `python -m app.main`。
 
 ### 1. 建立設定檔
 
@@ -48,6 +48,28 @@ docker compose logs -f telegram-summary-bot
 ```
 
 更新程式後使用相同指令重新建置。資料庫位於主機的 `./data/bot.db`，映射到容器的 `/app/data/bot.db`。
+
+## GitHub Actions 部署
+
+推送至 `master` 時，GitHub Actions 會先建置 Docker image，再推送 `ghcr.io/<owner>/<repository>` 的 commit SHA 與 `latest` tag，最後透過 SSH 在目標主機拉取該 commit SHA image 並以 Docker Compose 重啟。目標主機不會建置 image。
+
+目標主機須具備：
+
+- Docker 與 Docker Compose。
+- 此 repository 已 clone 至部署目錄，且可在該目錄對 `master` 執行 `git pull --ff-only`。
+- 已建立 `.env`，並保留 `data` 目錄以持久化資料庫。
+
+在 GitHub repository 的 Actions secrets 設定下列值：
+
+| Secret | 用途 |
+| --- | --- |
+| `DEPLOY_HOST` | 目標主機的主機名稱或 IP。 |
+| `DEPLOY_USER` | 用於 SSH 部署的使用者名稱。 |
+| `DEPLOY_PATH` | 目標主機上的 repository 絕對路徑。 |
+| `DEPLOY_SSH_KEY` | 部署使用者的 SSH 私鑰。 |
+| `DEPLOY_KNOWN_HOSTS` | 目標主機的已驗證 SSH host key（`known_hosts` 格式）。 |
+| `DEPLOY_GHCR_USERNAME` | 可讀取此 GHCR image 的 GitHub 使用者或機器人帳號。 |
+| `DEPLOY_GHCR_TOKEN` | 對應帳號的 GHCR token，必須具有 `packages:read` 權限。 |
 
 ## Telegram 與 BotFather 權限
 

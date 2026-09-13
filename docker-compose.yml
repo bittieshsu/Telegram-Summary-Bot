@@ -1,5 +1,6 @@
 services:
   telegram-summary-bot:
+    image: ${IMAGE:-telegram-summary-bot:local}
     build: .
     container_name: telegram-summary-bot
     restart: unless-stopped
